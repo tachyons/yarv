@@ -174,6 +174,8 @@ module YARV
           @insns << OptOr.new
         in :opt_plus, { mid: :+, orig_argc: 1 }
           @insns << OptPlus.new
+        in :opt_regexpmatch2, { mid: :=~, orig_argc: 1 }
+          @insns << OptRegexpmatch2.new
         in :opt_send_without_block, { mid:, orig_argc: }
           @insns << OptSendWithoutBlock.new(mid, orig_argc)
         in :opt_setinlinecache, cache
