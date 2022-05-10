@@ -12,6 +12,23 @@ module YARV
     def inspect
       "main"
     end
+
+    def require(filename)
+      $LOAD_PATH.each do |path|
+        filename += ".rb" unless filename.end_with?(".rb")
+
+        file_path = File.join(path, filename)
+        next unless File.file?(file_path) && File.readable?(file_path)
+
+        iseq =
+          File.open(file_path, "r") do |f|
+            YARV.compile(f.read, file_path, file_path)
+          end
+      end
+
+      # TODO: run the iseq in the ExecutionContext. Currently blocked on some
+      # missing instructions needed for mspec-run
+    end
   end
 
   # This is the object that gets passed around all of the instructions as they
@@ -79,7 +96,7 @@ module YARV
     # going to call into the parent runtime and let it handle the method call.
     def call_method(receiver, name, arguments)
       if methods.key?([receiver.class, name])
-        methods[[receiver.class, name]].eval(self)
+        self.eval(methods[[receiver.class, name]])
         stack.last
       else
         receiver.send(name, *arguments)
@@ -116,6 +133,22 @@ module YARV
         frames.pop
         @program_counter = current_program_counter
         @stack = @stack[0..current_stack_length]
+      end
+    end
+
+    # Pushes a new frame onto the stack, executes the instructions contained
+    # within this instruction sequence, then pops the frame off the stack.
+    def eval(iseq)
+      with_frame(iseq) do
+        self.program_counter = 0
+
+        loop do
+          insn = iseq.insns[program_counter]
+          self.program_counter += 1
+
+          insn.call(self)
+          break if insn in Leave
+        end
       end
     end
   end
@@ -234,20 +267,8 @@ module YARV
       end
     end
 
-    # Pushes a new frame onto the stack, executes the instructions contained
-    # within this instruction sequence, then pops the frame off the stack.
     def eval(context = ExecutionContext.new)
-      context.with_frame(self) do
-        context.program_counter = 0
-
-        loop do
-          insn = insns[context.program_counter]
-          context.program_counter += 1
-
-          insn.call(context)
-          break if insn in Leave
-        end
-      end
+      context.eval(self)
     end
   end
 
